@@ -1,5 +1,7 @@
 # Correção automatizada de trabalhos (experimento)
 
+Inspirado por [29.000 papers: o fim da ciência SEM IA](https://silvio.meira.com/29-000-papers-o-fim-da-ciencia-sem-ia/).
+
 Experimento em estágio inicial: correção padronizada de trabalhos de programação por agentes locais de IA (LLM). Testado com cyankiwi/Qwen3.8-27B-AWQ-INT4 via vLLM.
 
 As correções já feitas **não** seguem rubrica.md atual, houve alterações após a execução. Existe chance de contaminação cruzada de `venv` nos resultados existentes, a verificar.
