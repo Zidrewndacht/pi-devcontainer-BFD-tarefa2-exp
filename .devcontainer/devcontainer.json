@@ -1,0 +1,13 @@
+{
+  "name": "Pi Agent (vLLM)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "remoteUser": "node",
+  "postCreateCommand": "sed 's/\\r$//' .devcontainer/post-create.sh | bash",
+  "runArgs": [],
+  "mounts": []
+}

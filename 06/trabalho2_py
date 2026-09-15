@@ -1,0 +1,253 @@
+import requests
+import sqlite3
+import re
+import humanize
+from rich.console import Console
+from rich.table import Table
+from rich.prompt import Prompt, IntPrompt
+from rich import print as rprint
+
+POPULACAO_BRASIL = 203062512
+
+console = Console()
+
+class BancoDeDados:
+    def __init__(self, db_name="estatisticas_nomes.db"):
+        self.conn = sqlite3.connect(db_name)
+        self.criar_tabelas()
+
+    def criar_tabelas(self):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS frequencia (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT,
+                decada INTEGER,
+                frequencia_bruta INTEGER,
+                frequencia_humanizada TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS resumo (
+                nome TEXT PRIMARY KEY,
+                total INTEGER,
+                decada_pico INTEGER,
+                prevalencia TEXT
+            )
+        ''')
+        self.conn.commit()
+
+    def salvar_frequencia(self, nome, decada, bruta, humanizada):
+        cursor = self.conn.cursor()
+        cursor.execute('DELETE FROM frequencia WHERE nome = ? AND decada = ?', (nome, decada))
+        cursor.execute('''
+            INSERT INTO frequencia (nome, decada, frequencia_bruta, frequencia_humanizada)
+            VALUES (?, ?, ?, ?)
+        ''', (nome, decada, bruta, humanizada))
+        self.conn.commit()
+
+    def salvar_resumo(self, nome, total, pico, prevalencia):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO resumo (nome, total, decada_pico, prevalencia)
+            VALUES (?, ?, ?, ?)
+        ''', (nome, total, pico, prevalencia))
+        self.conn.commit()
+
+    def buscar_frequencias_decada(self, decada):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT nome, frequencia_bruta, frequencia_humanizada 
+            FROM frequencia 
+            WHERE decada = ? 
+            ORDER BY frequencia_bruta DESC 
+            LIMIT 10
+        ''', (decada,))
+        return cursor.fetchall()
+        
+    def buscar_nomes_por_faixa(self, min_freq, max_freq):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT nome, SUM(frequencia_bruta) as total 
+            FROM frequencia 
+            GROUP BY nome 
+            HAVING total BETWEEN ? AND ?
+            ORDER BY total DESC
+        ''', (min_freq, max_freq))
+        return cursor.fetchall()
+
+class IBGENomesApp:
+    def __init__(self):
+        self.db = BancoDeDados()
+
+    def _limpar_periodo(self, periodo_str):
+        match = re.search(r'\d{4}', periodo_str)
+        return int(match.group()) if match else 0
+
+    def _humanizar_numero(self, numero):
+        texto = humanize.intword(numero)
+        return texto.replace('billion', 'bilhões').replace('million', 'milhões').replace('thousand', 'mil')
+
+    def buscar_dados_api(self, nome):
+        url = f"https://servicodados.ibge.gov.br/api/v2/censos/nomes/{nome}"
+        try:
+            resposta = requests.get(url)
+            if resposta.status_code == 200 and resposta.json():
+                return resposta.json()[0]['res']
+            return []
+        except requests.exceptions.RequestException as e:
+            console.print(f"Erro ao conectar com a API: {e}")
+            return []
+
+    def op_consultar_frequencia(self):
+        nome = Prompt.ask("Digite o nome para consultar").strip().upper()
+        dados = self.buscar_dados_api(nome)
+
+        if not dados:
+            console.print(f"Nenhum dado encontrado para o nome '{nome}' no IBGE.")
+            return
+
+        tabela = Table(title=f"Frequência Histórica: {nome}")
+        tabela.add_column("Década", justify="center", style="cyan", no_wrap=True)
+        tabela.add_column("Frequência Bruta", justify="right", style="magenta")
+        tabela.add_column("Frequência Humanizada", justify="right", style="green")
+        tabela.add_column("Tendência", justify="center")
+
+        freq_anterior = None
+
+        for item in dados:
+            decada = self._limpar_periodo(item['periodo'])
+            bruta = item['frequencia']
+            humanizada = self._humanizar_numero(bruta)
+
+            tendencia = "N/A"
+            if freq_anterior is not None:
+                if bruta > freq_anterior:
+                    tendencia = "[green]Subiu[/green]"
+                elif bruta < freq_anterior:
+                    tendencia = "[red]Desceu[/red]"
+            
+            freq_anterior = bruta
+
+            self.db.salvar_frequencia(nome, decada, bruta, humanizada)
+
+            tabela.add_row(str(decada), str(bruta), humanizada, tendencia)
+
+        console.print(tabela)
+
+    def op_comparar_nomes(self):
+        nome1 = Prompt.ask("Primeiro nome").strip().upper()
+        nome2 = Prompt.ask("Segundo nome").strip().upper()
+
+        dados1 = self.buscar_dados_api(nome1)
+        dados2 = self.buscar_dados_api(nome2)
+
+        total1 = sum([item['frequencia'] for item in dados1])
+        total2 = sum([item['frequencia'] for item in dados2])
+
+        if total1 == 0 and total2 == 0:
+            console.print("Nenhum dos nomes foi encontrado.")
+            return
+
+        vencedor = nome1 if total1 > total2 else nome2
+        diferenca_abs = abs(total1 - total2)
+        
+        maior = max(total1, total2)
+        menor = min(total1, total2)
+        percentual = ((maior - menor) / menor * 100) if menor > 0 else 100.0
+
+        console.print("\nResultado da Comparação:")
+        console.print(f"Mais popular: [bold green]{vencedor}[/bold green]")
+        console.print(f"Diferença: [cyan]{self._humanizar_numero(diferenca_abs)}[/cyan] registros ({percentual:.1f}% maior)")
+
+        max_bar_length = 40
+        bar1_len = int((total1 / maior) * max_bar_length) if maior > 0 else 0
+        bar2_len = int((total2 / maior) * max_bar_length) if maior > 0 else 0
+
+        print()
+        console.print(f"{nome1.ljust(15)} | [green]{'█' * bar1_len}[/green] {self._humanizar_numero(total1)}")
+        console.print(f"{nome2.ljust(15)} | [blue]{'█' * bar2_len}[/blue] {self._humanizar_numero(total2)}\n")
+
+    def op_ranking_decada(self):
+        decada = IntPrompt.ask("[bold cyan]Digite a década para ranking[/bold cyan]")
+        resultados = self.db.buscar_frequencias_decada(decada)
+
+        if not resultados:
+            console.print(f"[red]Nenhum dado salvo no banco para a década de {decada}.[/red]")
+            return
+
+        tabela = Table(title=f"Top Nomes Pesquisados na Década de {decada}")
+        tabela.add_column("Posição", justify="center", style="cyan")
+        tabela.add_column("Nome", style="bold")
+        tabela.add_column("Frequência", justify="right", style="green")
+
+        for i, (nome, bruta, humanizada) in enumerate(resultados, 1):
+            tabela.add_row(str(i), nome, humanizada)
+
+        console.print(tabela)
+
+    def op_resumo_nome(self):
+        nome = Prompt.ask("[bold cyan]Digite o nome para o resumo[/bold cyan]").strip().upper()
+        dados = self.buscar_dados_api(nome)
+
+        if not dados:
+            console.print("[red]Nome não encontrado.[/red]")
+            return
+
+        total = sum([item['frequencia'] for item in dados])
+        pico = max(dados, key=lambda x: x['frequencia'])
+        decada_pico = self._limpar_periodo(pico['periodo'])
+        
+        fator = POPULACAO_BRASIL // total if total > 0 else 0
+        prevalencia = f"A cada {humanize.intcomma(fator)} brasileiros, 1 se chama {nome.title()}"
+
+        print(prevalencia)
+
+        self.db.salvar_resumo(nome, total, decada_pico, prevalencia)
+
+    def op_nomes_por_faixa(self):
+        min_freq = IntPrompt.ask("[bold cyan]Frequência mínima[/bold cyan]")
+        max_freq = IntPrompt.ask("[bold cyan]Frequência máxima[/bold cyan]")
+
+        limite_min_h = self._humanizar_numero(min_freq)
+        limite_max_h = self._humanizar_numero(max_freq)
+
+        resultados = self.db.buscar_nomes_por_faixa(min_freq, max_freq)
+
+        if not resultados:
+            console.print(f"[yellow]Nenhum nome encontrado na faixa entre {limite_min_h} e {limite_max_h}.[/yellow]")
+            return
+
+        console.print(f"\n[bold]Nomes na faixa (Entre {limite_min_h} e {limite_max_h}):[/bold]")
+        for nome, total in resultados:
+            console.print(f"{nome}: [green]{self._humanizar_numero(total)}[/green] no total")
+
+    def executar(self):
+        while True:
+            console.print("\n[bold blue]--- Menu IBGE Nomes ---[/bold blue]")
+            console.print("1. Consultar frequência de um nome")
+            console.print("2. Comparar dois nomes")
+            console.print("3. Ranking de década (Banco Local)")
+            console.print("4. Resumo detalhado")
+            console.print("5. Buscar nomes por faixa de frequência (Banco Local)")
+            console.print("0. Sair")
+            
+            escolha = Prompt.ask("[bold blue]Escolha uma opção[/bold blue]", choices=["1", "2", "3", "4", "5", "0"])
+
+            if escolha == "1":
+                self.op_consultar_frequencia()
+            elif escolha == "2":
+                self.op_comparar_nomes()
+            elif escolha == "3":
+                self.op_ranking_decada()
+            elif escolha == "4":
+                self.op_resumo_nome()
+            elif escolha == "5":
+                self.op_nomes_por_faixa()
+            elif escolha == "0":
+                console.print("[bold red]Encerrando o programa.[/bold red]")
+                break
+
+if __name__ == "__main__":
+    app = IBGENomesApp()
+    app.executar()

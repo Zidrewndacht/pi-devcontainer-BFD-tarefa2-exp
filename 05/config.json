@@ -1,0 +1,12 @@
+{
+  "ibge_url": "https://servicodados.ibge.gov.br/api/v1/localidades/estados/{uf}/municipios",
+  "nominatim_domain": "nominatim.openstreetmap.org",
+  "user_agent": "geoatlas-brasil-tarefa5/1.0",
+  "timeout": 20,
+  "intervalo_requisicoes": 1.1,
+  "uf_padrao": "",
+  "banco": "dados/municipios.db",
+  "arquivo_capitais": "dados/capitais.json",
+  "diretorio_exportacao": "exports",
+  "arquivo_log": "logs/aplicacao.log"
+}

@@ -1,0 +1,227 @@
+"""
+Módulo com funções de interface usando a biblioteca Rich.
+"""
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+
+console = Console()
+
+
+def exibir_tabela_telefone(dados):
+    """
+    Exibe os dados de um telefone em uma tabela Rich.
+    """
+    table = Table(title="Dados do Telefone")
+    table.add_column("Campo", style="cyan")
+    table.add_column("Valor", style="green")
+    
+    table.add_row("Nacional", dados.get('nacional', 'N/A'))
+    table.add_row("Internacional", dados.get('internacional', 'N/A'))
+    table.add_row("Tipo", dados.get('tipo', 'N/A'))
+    table.add_row("DDD", dados.get('ddd', 'N/A'))
+    table.add_row("País", dados.get('pais', 'N/A'))
+    
+    console.print(table)
+
+
+def exibir_tabela_numeros_gerados(numeros):
+    """
+    Exibe uma lista de números gerados em tabela.
+    """
+    table = Table(title="Números Gerados")
+    table.add_column("#", style="cyan", width=3)
+    table.add_column("UF", style="magenta")
+    table.add_column("DDD", style="yellow")
+    table.add_column("Tipo", style="green")
+    table.add_column("Número", style="white")
+    table.add_column("Formatado", style="blue")
+    
+    for i, num in enumerate(numeros, 1):
+        table.add_row(
+            str(i),
+            num.get('uf', '?'),
+            num['ddd'],
+            num['tipo'].capitalize(),
+            num['completo'],
+            num['formatado']
+        )
+    
+    console.print(table)
+
+
+def exibir_tabela_ddd(ddd, estado, cidades, uf=None):
+    """
+    Exibe informações de um DDD em tabela.
+    """
+    titulo = f"DDD {ddd}"
+    if uf:
+        titulo += f" - {uf}"
+    
+    table = Table(title=titulo)
+    table.add_column("Estado", style="cyan")
+    table.add_column("Cidades", style="green")
+    
+    if len(cidades) > 10:
+        cidades_str = ", ".join(cidades[:10]) + f"\n... e mais {len(cidades)-10} cidades"
+    else:
+        cidades_str = ", ".join(cidades) if cidades else "Nenhuma cidade listada"
+    
+    table.add_row(estado, cidades_str)
+    console.print(table)
+
+
+def exibir_tabela_historico(registros, ufs):
+    """
+    Exibe o histórico de telefones em tabela.
+    """
+    table = Table(title="Histórico de Telefones")
+    table.add_column("ID", style="cyan", width=4)
+    table.add_column("Nacional", style="white")
+    table.add_column("Internacional", style="green")
+    table.add_column("Tipo", style="yellow")
+    table.add_column("DDD", style="magenta")
+    table.add_column("UF", style="blue")
+    table.add_column("Válido", style="green")
+    table.add_column("Fictício", style="red")
+    table.add_column("Timestamp", style="white")
+
+    for registro, uf in zip(registros, ufs):
+        _, numero_nacional, numero_internacional, tipo, ddd, _, valido, ficticio, timestamp = registro
+        table.add_row(
+            str(registro[0]),
+            numero_nacional or "",
+            numero_internacional or "",
+            tipo or "",
+            ddd or "",
+            uf,
+            valido or "",
+            "Sim" if ficticio else "Nao",
+            timestamp or ""
+        )
+
+    console.print(table)
+
+
+def exibir_menu():
+    """
+    Exibe o menu principal e retorna a opção escolhida.
+    """
+    console.print("\n[bold cyan]" + "="*50)
+    console.print("[bold cyan]SISTEMA DE TELEFONE E DDD")
+    console.print("[bold cyan]" + "="*50)
+    
+    menu_items = [
+        ("1", "Validar e formatar número"),
+        ("2", "Consultar DDD (cidades/estado)"),
+        ("3", "Gerar números válidos por região"),
+        ("4", "Buscar histórico"),
+        ("5", "Comparar dois números"),
+        ("0", "Sair")
+    ]
+    
+    for num, desc in menu_items:
+        console.print(f"[{num}] {desc}")
+    
+    while True:
+        opcao = console.input("\nEscolha uma opção [0-5]: ").strip()
+        if opcao in ["0", "1", "2", "3", "4", "5"]:
+            return int(opcao)
+        console.print("[red]Opção inválida. Digite 0, 1, 2, 3, 4 ou 5.[/]")
+
+
+def exibir_mensagem(mensagem, tipo="info"):
+    """
+    Exibe mensagens formatadas com cores.
+    """
+    cores = {
+        "info": "blue",
+        "sucesso": "green",
+        "erro": "red",
+        "aviso": "yellow"
+    }
+    
+    cor = cores.get(tipo, "white")
+    console.print(f"[{cor}]{mensagem}[/]")
+
+
+def exibir_painel(texto, titulo="", cor="blue"):
+    """
+    Exibe um painel com texto formatado.
+    """
+    panel = Panel(texto, title=titulo, border_style=cor)
+    console.print(panel)
+
+
+def input_numero(mensagem="Digite o número de telefone"):
+    """
+    Solicita um número de telefone ao usuário.
+    """
+    console.print(mensagem)
+    return console.input("> ").strip()
+
+
+def input_text(mensagem, default=None):
+    """
+    Solicita um texto ao usuário.
+    """
+    console.print(mensagem)
+    resposta = console.input("> ").strip()
+    if resposta == "" and default is not None:
+        return default
+    return resposta
+
+
+def input_ddd():
+    """
+    Solicita um DDD ao usuário.
+    """
+    console.print("Digite o DDD (2 dígitos)")
+    resposta = console.input("> ").strip()
+    return resposta if resposta != "" else "11"
+
+
+def input_quantidade():
+    """
+    Solicita a quantidade de números a gerar.
+    """
+    while True:
+        console.print("Quantos números gerar? [5]")
+        resposta = console.input("> ").strip()
+        if resposta == "":
+            return 5
+        if resposta.isdigit() and int(resposta) > 0:
+            return int(resposta)
+        console.print("[red]Digite um número válido maior que zero.[/]")
+
+
+def input_uf():
+    """
+    Solicita uma UF ao usuário.
+    """
+    console.print("Digite a UF (ex: SP, RJ, MG)")
+    return console.input("> ").strip().upper()
+
+
+def input_tipo_numero():
+    """
+    Solicita o tipo de número para geração.
+    """
+    while True:
+        console.print("Tipo de número? (celular, fixo ou aleatório)")
+        resposta = console.input("> ").strip().lower()
+        if resposta in ["celular", "fixo", "aleatorio"]:
+            return resposta
+        console.print("[red]Escolha 'celular', 'fixo' ou 'aleatorio'.[/]")
+
+
+def input_sim_nao(mensagem):
+    """
+    Solicita uma resposta sim/não ao usuário.
+    """
+    while True:
+        console.print(mensagem)
+        resposta = console.input("> ").strip().lower()
+        if resposta in ["s", "n"]:
+            return resposta
+        console.print("[red]Digite s ou n.[/]")

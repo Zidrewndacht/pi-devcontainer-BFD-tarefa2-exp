@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.db
+.env
+.idea/
+.vscode/
+exports/*.csv
+exports/*.json
+logs/*.log
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.ruff_cache/
